@@ -1,13 +1,31 @@
+# import os
+# import streamlit as st
+# import pickle
+# import time
+# from langchain_openai import OpenAI
+# from langchain_classic.chains import RetrievalQAWithSourcesChain
+# # from langchain_classic.chains import RetrievalQA
+# # from langchain_classic.chains import create_retrieval_chain
+# # from langchain_classic.chains import create_retrieval_chain
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from langchain_community.document_loaders import UnstructuredURLLoader
+# from langchain_community.embeddings import OpenAIEmbeddings
+# from langchain_community.vectorstores import FAISS
+
 import os
 import streamlit as st
 import pickle
 import time
-from langchain import OpenAI
-from langchain.chains import RetrievalQAWithSourcesChain
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import UnstructuredURLLoader
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+import langchain
+from langchain_openai import OpenAI
+from langchain_classic.chains import RetrievalQAWithSourcesChain
+from langchain_classic.chains.qa_with_sources.loading import load_qa_with_sources_chain
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import UnstructuredURLLoader
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_openai import AzureChatOpenAI
+from langchain_openai import AzureOpenAIEmbeddings
 
 from dotenv import load_dotenv
 load_dotenv()  # take environment variables from .env (especially openai api key)
@@ -24,7 +42,12 @@ process_url_clicked = st.sidebar.button("Process URLs")
 file_path = "faiss_store_openai.pkl"
 
 main_placeholder = st.empty()
-llm = OpenAI(temperature=0.9, max_tokens=500)
+# llm = OpenAI(temperature=0.9, max_tokens=500)
+llm = AzureChatOpenAI(
+    azure_deployment="gpt-4o" ,
+    api_version="2023-03-15-preview",
+    model="gpt-4o"
+)
 
 if process_url_clicked:
     # load data
@@ -39,20 +62,29 @@ if process_url_clicked:
     main_placeholder.text("Text Splitter...Started...✅✅✅")
     docs = text_splitter.split_documents(data)
     # create embeddings and save it to FAISS index
-    embeddings = OpenAIEmbeddings()
+    # embeddings = OpenAIEmbeddings()
+    embeddings = AzureOpenAIEmbeddings(
+    model="text-embedding-3-large",
+    openai_api_version="2023-05-15"
+    )
     vectorstore_openai = FAISS.from_documents(docs, embeddings)
     main_placeholder.text("Embedding Vector Started Building...✅✅✅")
     time.sleep(2)
 
+
     # Save the FAISS index to a pickle file
-    with open(file_path, "wb") as f:
-        pickle.dump(vectorstore_openai, f)
+    vectorstore_openai.save_local(file_path)
+    # with open(file_path, "wb") as f:
+    #     pickle.dump(vectorstore_openai, f)
 
 query = main_placeholder.text_input("Question: ")
 if query:
     if os.path.exists(file_path):
-        with open(file_path, "rb") as f:
-            vectorstore = pickle.load(f)
+            embeddings = AzureOpenAIEmbeddings(
+            model="text-embedding-3-large",
+            openai_api_version="2023-05-15"
+            )
+            vectorstore = FAISS.load_local(file_path, embeddings, allow_dangerous_deserialization=True)
             chain = RetrievalQAWithSourcesChain.from_llm(llm=llm, retriever=vectorstore.as_retriever())
             result = chain({"question": query}, return_only_outputs=True)
             # result will be a dictionary of this format --> {"answer": "", "sources": [] }
